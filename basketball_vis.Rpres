@@ -1,0 +1,233 @@
+Visualization Basketball Data Using ggplot2
+========================================================
+author: Yishu Xue
+date: 2021-10-22, University of Missouri Columbia
+autosize: true
+
+<style>
+.reveal .slides{
+    width: 90% !important;  /* or other width */
+    height: 90% !important;  /* or other width */
+}
+code.r{
+  font-size: 9px;
+}
+</style>
+
+Outline
+========================================================
+width: 1920
+height: 1080
+
+Most basketball visualization tasks fall into the following categories:
+
+- the court
+- shot chart
+- intensity plot
+    - with grids
+    - with contours
+
+We will cover how each of these types of plots are drawn using **ggplot2**.
+
+The Basketball Court
+========================================================
+
+In **ggplot2**, customized lines, dots and shapes can be plotted using
+polygons. [This](https://egallic.fr/en/drawing-a-basketball-court-with-r/) post
+explains how they are defined.
+I have put the defined polygon into an `.rds` file (the description is in
+French!).
+
+
+```{r fig.align="center", fig.width = 10, fig.height = 8}
+library(tidyverse); library(ggpubr); library(ggsci)
+court <- readRDS("./court.rds"); head(court)
+## visualize a court first - what might be wrong with the court?
+ggplot(court, aes(x = y, y = x, group = group)) + geom_polygon()
+```
+
+
+
+The Basketball Court
+========================================================
+
+For basketball, football, or soccer courts, it is important to maintain
+the length/width ratio so that the visualization looks real.
+
+```{r fig.align="center", fig.width = 12, fig.height = 8}
+ggplot(court, aes(x = y, y = x, group = group)) + geom_polygon() +
+  coord_fixed()
+```
+
+The Basketball Court
+========================================================
+
+Another refinement: **ggplot2**'s default theme has a grey background with white
+grids, which might complicate the visualization. Removing the grid is a good
+idea. Also, we do not really care about the $x$ or $y$ values. They can be
+removed too.
+
+A clean visualization of the basketball court:
+
+```{r fig.align="center", fig.width = 12, fig.height = 8, fig.cap = "A Clean Court"}
+ggplot(court, aes(x = y, y = x, group = group)) + geom_polygon() +
+  coord_fixed() + theme_pubr(border = TRUE) +
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank()
+  ) +
+  xlab("") + ylab("") +
+  scale_y_continuous(expand = c(0,0)) + # removes the padding between border and plot
+  scale_x_continuous(expand = c(0,0))
+```
+
+Shot Chart
+========================================================
+
+A shot chart, given the locations of shots, is essentially a scatterplot
+overlaid on the court. Let us use an example data to illustrate.
+
+```{r fig.align="center", fig.width = 12, fig.height = 8, fig.cap = "A Clean Court"}
+shots <- readRDS("shotDataf.rds")
+ad_shots <- shots %>% filter(PLAYER_NAME == "Anthony Davis")
+head(ad_shots)
+```
+
+Shot Chart
+========================================================
+
+```{r fig.align="center", fig.width = 12, fig.height = 8, fig.cap = "A Clean Court"}
+## a scatterplot of the shots only first
+ggplot(ad_shots, aes(x = LOC_X, y = LOC_Y)) + geom_point()
+```
+
+- the $x$ locations range from (0, 50), not (-25, 25) like how the court was
+defined (adjust the $x$ locations)
+
+- the shots are in the offensive half court (use only half of the court polygon)
+
+- made shots and missed shots are not distinguished (change point shapes)
+
+Shot Chart
+========================================================
+
+```{r fig.align="center", fig.width = 12, fig.height = 10, fig.cap = "A Clean Court"}
+## a scatterplot of the shots only first
+ad_shots$lab <- ifelse(ad_shots$Made == 1, "Made", "Missed")
+half_court <- court %>% filter(y <= 47)
+ad_shots %>%
+  ggplot(aes(x = LOC_X - 25, y = LOC_Y)) +
+  geom_point(aes(shape = lab, col = lab), size = 3, alpha = 0.5) +
+## overlay the polygon of half court
+  geom_polygon(data = half_court, aes(x = x, y = y, group = group)) +
+    coord_fixed() + theme_pubr(border = TRUE, base_size = 16) +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        axis.ticks = element_blank()) + xlab("") + ylab("") +
+  scale_y_continuous(expand = c(0,0)) + # removes the padding between border and plot
+  scale_x_continuous(expand = c(0,0)) + ggsci::scale_color_lancet()
+```
+
+
+Intensity Plot with Grids
+========================================================
+
+Oftentimes intensities are estimated by fitting certain model for count data,
+after partitioning the court into a grid of small squares. Here we use the
+LGCP fitted intensity as an example.
+
+```{r}
+# read in the data of Draymond Green and James Harden
+green <- readRDS("green.rds")
+harden <- readRDS("harden.rds")
+
+head(green)
+```
+
+What are $x$ and $y$? Centers of small squares over the court. The `mean` column
+contains the intensity values.
+```{r, fig.align = 'center'}
+plot(green$x, green$y, pch = 18, cex = 0.3)
+```
+
+Intensity Plot with Grid
+========================================================
+
+```{r fig.align = 'center', fig.width = 10, fig.height = 10}
+ggplot(green, aes(x = x, y = y)) +
+  geom_tile(aes(fill = mean)) +
+  coord_fixed() +
+      coord_fixed() + theme_pubr(border = TRUE, base_size = 16) +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        axis.ticks = element_blank()) + xlab("") + ylab("") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(expand = c(0,0))
+```
+
+- the default palette makes it impossible to overlay a basketball court on it
+- so many tiles with small values - what is the difference?
+
+Intensity Plot with Grid
+========================================================
+
+We need to customize the color palette. One thing I personally like to do is to
+break the continuous intensity into disjoint levels, because this helps us to
+distinguish the small values more clearly.
+
+```{r fig.align = 'center', fig.width = 8, fig.height = 8}
+library(RColorBrewer)
+breaks <- c(0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 1, 2, 4, 6, 8, 10, 11)
+# expand the "Blues" palette to contain more discrete values as needed
+colors <- colorRampPalette(brewer.pal(9, "Blues"))(length(breaks) - 1)
+
+green$Intensity <- cut(green$mean, breaks = breaks)
+ggplot(green, aes(x = x, y = y)) + geom_tile(aes(fill  = Intensity)) +
+  geom_polygon(data = half_court,
+               aes(y = x + 25, x = y, group = group)) + # some coordinate adjustments
+  coord_fixed() + theme_pubr(border = TRUE, base_size = 16) +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        axis.ticks = element_blank()) + xlab("") + ylab("") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = colors)
+```
+
+Intensity Plot with Contours
+========================================================
+What if we want contours of intensities like maps?
+
+```{r fig.align = 'center', fig.width = 8, fig.height = 8}
+library(RColorBrewer)
+breaks <- c(0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 1, 2, 4, 6, 8, 10, 11)
+# expand the "Blues" palette to contain more discrete values as needed
+colors <- colorRampPalette(brewer.pal(9, "Blues"))(length(breaks) - 1)
+
+ggplot(green, aes(x = x, y = y)) +
+  geom_contour_filled(aes(z = mean), breaks = breaks, col = 'grey') +
+  geom_polygon(data = half_court,
+               aes(y = x + 25, x = y, group = group)) + # some coordinate adjustments
+  coord_fixed() + theme_pubr(border = TRUE, base_size = 16) +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        axis.ticks = element_blank()) + xlab("") + ylab("") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = colors)
+```
+
+Multiple Intensity Plots Together
+========================================================
+
+```{r fig.align = 'center', fig.width = 20, fig.height = 8}
+harden$Intensity <- cut(harden$mean, breaks = breaks)
+rbind(green, harden) %>%
+  ggplot(aes(x = x, y = y)) +
+  geom_contour_filled(aes(z = mean), breaks = breaks, col = 'grey') +
+  geom_polygon(data = half_court,
+               aes(y = x + 25, x = y, group = group)) + # some coordinate adjustments
+  coord_fixed() + theme_pubr(border = TRUE, base_size = 16) +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        axis.ticks = element_blank()) + xlab("") + ylab("") +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = colors) +
+  facet_wrap(~Player)
+```
